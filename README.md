@@ -74,3 +74,13 @@ codek/
 ## 카드 이름 (assets/cards)
 
 songpyeon, tteokguk, kimchi, bibimbap, bulgogi, japchae, yakgwa, sikhye, hanbok, gat, yunnori, tuho, jegichagi, neolttwigi, yeonnalligi, paengichigi, ssireum, taekwondo, ganggangsullae, talchum, samulnori, gayageum, janggu, hanok, hanji, buchae, sebae, bokjumeoni
+
+## 배경음악·효과음 (assets/sound)
+
+CODE K 오리지널 사운드(배경음악 4곡, 효과음 17종)를 mp3로 바꿔 넣었습니다. 수업용으로 잔잔하게 맞춰 두었어요.
+- 음량: 배경음악 10%, 효과음 30% (index.html의 `VOL` 값으로 조절)
+- 원어민 문장을 읽어 줄 때는 배경음악이 잠깐 더 작아져요.
+- 배경음악: 시작·입장 화면 / 대기실 / 게임 진행 / 결과·순위 화면마다 바뀜
+- 효과음: 버튼, 코드 확인, 입장, 게임 시작, 카드 선택, 파란·빨간·마을 사람 카드 공개, 힌트 공개, 차례 알림, 10초 경고, 도깨비, 승리, 패배, 다음 판 카운트다운
+- 설정(⚙)에서 "배경음악 끄기"만 따로 할 수 있고, 🔊 버튼은 모든 소리를 끄고 켭니다.
+- 브라우저 규칙 때문에 화면을 한 번 터치한 뒤부터 소리가 나요.

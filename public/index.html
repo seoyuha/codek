@@ -490,23 +490,71 @@ function fit(){
 }
 addEventListener('resize', fit); fit();
 
-function show(id){ $$('#stage .scr').forEach(s=>s.classList.toggle('on', s.id===id)); const el=$('#'+id); if(el) $('#backdrop').style.backgroundImage=el.style.backgroundImage; }
+const SCREEN_BGM = { title:'title', join:'title', wait:'wait', game:'game', final:'result' };
+function show(id){ $$('#stage .scr').forEach(s=>s.classList.toggle('on', s.id===id)); const el=$('#'+id); if(el) $('#backdrop').style.backgroundImage=el.style.backgroundImage; if(SCREEN_BGM[id]) setTimeout(()=>{ if(!$('#'+id).classList.contains('on')) return; if(id==='game' && !$('#endLayer').classList.contains('hidden')) return; if(id==='game' && S && S.game && S.game.phase==='over' && !peek) return; playBgm(SCREEN_BGM[id]); },0); }
 show('title');
 function toast(msg, ms=2400){ const t=$('#toast'); t.textContent=msg; t.classList.remove('hidden'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.add('hidden'), ms); }
 
-// ---------- 소리 ----------
-let actx=null;
-function beep(type){
-  if(!sound) return;
+// ---------- 소리 (CODE K 오리지널 사운드, 잔잔한 음량) ----------
+// 음량: 배경음악 10%, 효과음 30% 정도. 아이패드도 음량이 지켜지도록 Web Audio로 재생해요.
+const VOL = { bgm: 0.10, sfx: 0.30, duck: 0.035 };
+const SFX_GAIN = { click:.55, hover:.4, confirm:.8, cancel:.8, join:.8, start:.8, select:.7, blue:.9, red:.9, neutral:.9, hint:.9, timer:.7, goblin:.6, victory:.75, defeat:.6, notify:.9, countdown:.8 };
+const OLD2NEW = { tap:'click', turn:'notify', hint:'hint', win:'victory', boom:'goblin', bad:'cancel', hit:'confirm' };
+let bgmOn = LS.get('codek_bgm') !== false;
+const AU = { ctx:null, buf:{}, loading:{}, bgmGain:null, sfxGain:null, bgmSrc:null, bgmName:null, want:null };
+function auInit(){
+  if(AU.ctx) { if(AU.ctx.state==='suspended') AU.ctx.resume(); return true; }
   try{
-    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
-    const seq = { hit:[[660,.08],[880,.12]], bad:[[300,.15],[220,.2]], turn:[[520,.08],[620,.08]], hint:[[740,.07],[988,.1]], win:[[523,.12],[659,.12],[784,.12],[1047,.25]], boom:[[160,.3],[110,.35]], tap:[[900,.04]] }[type] || [[600,.1]];
-    let t = actx.currentTime;
-    seq.forEach(([f,d])=>{ const o=actx.createOscillator(), g=actx.createGain(); o.type= type==='boom'?'sawtooth':'triangle'; o.frequency.value=f; g.gain.setValueAtTime(.18,t); g.gain.exponentialRampToValueAtTime(.001,t+d); o.connect(g).connect(actx.destination); o.start(t); o.stop(t+d); t+=d*.9; });
-  }catch(e){}
+    AU.ctx = new (window.AudioContext||window.webkitAudioContext)();
+    AU.bgmGain = AU.ctx.createGain(); AU.bgmGain.gain.value = 0; AU.bgmGain.connect(AU.ctx.destination);
+    AU.sfxGain = AU.ctx.createGain(); AU.sfxGain.gain.value = VOL.sfx; AU.sfxGain.connect(AU.ctx.destination);
+    ['click','select','confirm','hint','blue','red','neutral','notify'].forEach(loadSnd);
+    if(AU.want) playBgm(AU.want);
+    return true;
+  }catch(e){ return false; }
 }
+function loadSnd(name){
+  const key = name.startsWith('bgm_') ? name : 'sfx_'+name;
+  if(AU.buf[key]) return Promise.resolve(AU.buf[key]);
+  if(AU.loading[key]) return AU.loading[key];
+  return AU.loading[key] = fetch('assets/sound/'+key+'.mp3').then(r=>r.arrayBuffer())
+    .then(ab=>new Promise((ok,no)=>AU.ctx.decodeAudioData(ab,ok,no)))
+    .then(b=>AU.buf[key]=b).catch(()=>null);
+}
+function sfx(name){
+  if(!sound || !AU.ctx) return;
+  loadSnd(name).then(b=>{
+    if(!b) return;
+    const src=AU.ctx.createBufferSource(), g=AU.ctx.createGain();
+    g.gain.value = SFX_GAIN[name] ?? .8; src.buffer=b; src.connect(g).connect(AU.sfxGain); src.start();
+  });
+}
+function beep(type){ sfx(OLD2NEW[type] || type); }
+function bgmLevel(){ return (sound && bgmOn) ? VOL.bgm : 0; }
+function playBgm(name){
+  AU.want = name;
+  if(!AU.ctx || AU.bgmName===name) return;
+  AU.bgmName = name;
+  const g=AU.bgmGain, t=AU.ctx.currentTime;
+  const old=AU.bgmSrc; AU.bgmSrc=null;
+  g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value,t); g.gain.linearRampToValueAtTime(0,t+.6);
+  if(old) try{ old.stop(t+.65); }catch(e){}
+  loadSnd('bgm_'+name).then(b=>{
+    if(!b || AU.bgmName!==name) return;
+    const src=AU.ctx.createBufferSource(); src.buffer=b; src.loop=true; src.connect(AU.bgmGain);
+    const t2=Math.max(AU.ctx.currentTime, t+.65); src.start(t2); AU.bgmSrc=src;
+    AU.bgmGain.gain.setValueAtTime(0,t2); AU.bgmGain.gain.linearRampToValueAtTime(bgmLevel(), t2+1.2);
+  });
+}
+function setBgmVolume(v, sec=.4){ if(!AU.ctx) return; const t=AU.ctx.currentTime, g=AU.bgmGain.gain; g.cancelScheduledValues(t); g.setValueAtTime(g.value,t); g.linearRampToValueAtTime(v,t+sec); }
+function refreshBgm(){ setBgmVolume(bgmLevel()); }
+// 첫 터치·클릭 때 소리 켜기 (브라우저 자동재생 제한)
+['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev, auInit, { capture:true, passive:true }));
+// 버튼에 손가락·마우스를 올릴 때 아주 작은 소리
+document.addEventListener('pointerover', e=>{ if(e.pointerType!=='mouse') return; const b=e.target.closest('.hs,.gbtn,.dbtn,.cbtn'); if(b && b!==sfx._last){ sfx._last=b; sfx('hover'); } });
+document.addEventListener('pointerout', e=>{ if(!e.relatedTarget || !sfx._last?.contains(e.relatedTarget)) sfx._last=null; });
 function syncSound(){ $$('.sound-hs').forEach(b=>b.classList.toggle('muted', !sound)); }
-function toggleSound(){ sound=!sound; LS.set('codek_sound',sound); syncSound(); if(!sound) try{speechSynthesis.cancel()}catch(e){}; toast(sound?'🔊 소리를 켰어요':'🔇 소리를 껐어요',1400); }
+function toggleSound(){ sound=!sound; LS.set('codek_sound',sound); syncSound(); refreshBgm(); if(!sound) try{speechSynthesis.cancel()}catch(e){}; toast(sound?'🔊 소리를 켰어요':'🔇 소리를 껐어요',1400); }
 syncSound();
 let voice=null;
 function pickVoice(){
@@ -520,7 +568,7 @@ function pickVoice(){
 try{ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }catch(e){}
 function speak(text, rate=.9){
   if(!sound) return;
-  try{ const u=new SpeechSynthesisUtterance(text); if(voice) u.voice=voice; u.lang=voice?voice.lang:'en-US'; u.rate=rate; speechSynthesis.speak(u); }catch(e){}
+  try{ const u=new SpeechSynthesisUtterance(text); if(voice) u.voice=voice; u.lang=voice?voice.lang:'en-US'; u.rate=rate; u.onstart=()=>setBgmVolume(Math.min(bgmLevel(),VOL.duck),.25); u.onend=u.onerror=()=>{ if(!speechSynthesis.speaking) refreshBgm(); }; speechSynthesis.speak(u); }catch(e){}
 }
 function fullscreen(){
   try{ if(!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }catch(e){ toast('이 기기에서는 전체 화면을 쓸 수 없어요'); }
@@ -532,7 +580,7 @@ function popup(html, cls=''){
   L.onclick=e=>{ if(e.target===L) closePop(); };
   return L.firstElementChild;
 }
-function closePop(){ $('#popLayer').classList.add('hidden'); $('#popLayer').innerHTML=''; }
+function closePop(){ if(!$('#popLayer').classList.contains('hidden')) sfx('cancel'); $('#popLayer').classList.add('hidden'); $('#popLayer').innerHTML=''; }
 function howto(){
   popup(`<h2 class="bhs">📖 CODE K 작전 설명서</h2>
     <div class="steps">
@@ -549,12 +597,14 @@ function howto(){
 function settings(){
   const inGame = session.mode==='student' && session.sid;
   const el = popup(`<h3 class="bhs">⚙ 설정</h3>
-    <button class="dbtn goldb" id="pSound">${sound?'🔊 소리 끄기':'🔇 소리 켜기'}</button>
+    <button class="dbtn goldb" id="pSound">${sound?'🔊 모든 소리 끄기':'🔇 모든 소리 켜기'}</button>
+    <button class="dbtn" id="pBgm" ${sound?'':'disabled'}>${bgmOn?'🎵 배경음악 끄기':'🎵 배경음악 켜기'}</button>
     <button class="dbtn" id="pFull">⛶ 전체 화면</button>
     <button class="dbtn" id="pHow">📖 게임 방법</button>
     ${inGame?'<button class="dbtn redb" id="pLeave">🚪 교실에서 나가기</button>':'<button class="dbtn" id="pHome">🏠 처음 화면으로</button>'}
     <button class="gbtn" id="pClose">닫기</button>`,'settings');
   el.querySelector('#pSound').onclick=()=>{ toggleSound(); settings(); };
+  el.querySelector('#pBgm').onclick=()=>{ bgmOn=!bgmOn; LS.set('codek_bgm',bgmOn); refreshBgm(); toast(bgmOn?'🎵 배경음악을 켰어요':'🎵 배경음악을 껐어요',1400); settings(); };
   el.querySelector('#pFull').onclick=()=>{ fullscreen(); closePop(); };
   el.querySelector('#pHow').onclick=()=>howto();
   el.querySelector('#pClose').onclick=closePop;
@@ -621,7 +671,7 @@ function setJoinStep(st){
     : `게임에 참여하려면<br>선생님이 알려준 <b>6자리 입장 코드</b>를 입력하세요.`) + '</div>';
   if(nameMode) setTimeout(()=>$('#jName').focus(),30);
 }
-function joinErr(m){ $('#jErr').innerHTML=`<span>${esc(m)}</span>`; beep('bad'); }
+function joinErr(m){ $('#jErr').innerHTML=`<span>${esc(m)}</span>`; sfx('cancel'); }
 function goJoin(){
   closePop(); show('join');
   if(session.mode==='student'&&session.sid){ rejoin(); return; }
@@ -634,14 +684,14 @@ function submitJoin(){
     if(code.length!==6) return joinErr('입장 코드 6자리를 모두 입력해 주세요.');
     socket.emit('student:check',{code},res=>{
       if(!res.ok) return joinErr(res.err);
-      joinCode=code; setJoinStep('name');
+      joinCode=code; setJoinStep('name'); sfx('confirm');
     });
   } else {
     const name=$('#jName').value.trim();
     if(!name) return joinErr('이름을 입력해 주세요.');
     socket.emit('student:join',{code:joinCode,name},res=>{
       if(!res.ok) return joinErr(res.err);
-      session={mode:'student',code:res.code,sid:res.sid,name:res.name}; LS.set('codek',session);
+      session={mode:'student',code:res.code,sid:res.sid,name:res.name}; LS.set('codek',session); sfx('join');
     });
   }
 }
@@ -720,6 +770,7 @@ function renderGame(){
     const fresh = lastSeq.no!==-1;
     lastSeq={no:g.no, seq: fresh ? (g.events.find(e=>e.type==='start')||{seq:0}).seq-1 : Math.max(0,...g.events.map(e=>e.seq))};
     spyPick={w:null,n:null}; hintOpen=true; peek=false; hideEnd(); endShownFor=-1;
+    if(g.phase!=='over') sfx('start');
   }
   endAt = g.remain!=null ? Date.now()+g.remain : null;
   nextAt = g.nextIn!=null ? Date.now()+g.nextIn : null;
@@ -785,7 +836,7 @@ function renderBoard(g){
       <div class="pins">${c.votes.map(n=>`<span class="pin">${esc(n)}</span>`).join('')}</div>
     </div>`;
   }).join('');
-  if(canVote) $$('#board .kcard.can').forEach(el=>el.onclick=()=>{ beep('tap'); socket.emit('game:vote',{idx:+el.dataset.i}); });
+  if(canVote) $$('#board .kcard.can').forEach(el=>el.onclick=()=>{ sfx('select'); socket.emit('game:vote',{idx:+el.dataset.i}); });
 }
 
 function hintHTML(h, showKo){
@@ -848,7 +899,7 @@ function renderHintPad(g){
   const rer=()=>{ renderBoard(S.game); renderActions(S.game); };
   pad.querySelectorAll('.hchip').forEach(b=>b.onclick=()=>{ spyPick.w=b.dataset.w; beep('tap'); speak(b.dataset.w,.85); rer(); });
   pad.querySelectorAll('.numbtn').forEach(b=>b.onclick=()=>{ spyPick.n=+b.dataset.n; beep('tap'); rer(); });
-  pad.querySelector('#sendHint').onclick=()=>{ socket.emit('game:hint',{word:spyPick.w,num:spyPick.n}); spyPick={w:null,n:null}; };
+  pad.querySelector('#sendHint').onclick=()=>{ sfx('confirm'); socket.emit('game:hint',{word:spyPick.w,num:spyPick.n}); spyPick={w:null,n:null}; };
   pad.querySelector('#hideHint').onclick=()=>{ hintOpen=false; rer(); };
 }
 
@@ -859,9 +910,9 @@ function handleEvents(g){
   if(!evs.length) return;
   lastSeq.seq=Math.max(...evs.map(e=>e.seq));
   evs.forEach(e=>{
-    if(e.type==='hint'){ beep('hint'); setTimeout(()=>speak(`${e.word}. ${e.num}.`,.85),250); }
-    else if(e.type==='turn'){ beep('turn'); }
-    else if(e.type==='timeout'){ toast('⏰ 시간이 다 되어 차례가 넘어가요!'); }
+    if(e.type==='hint'){ sfx('hint'); setTimeout(()=>speak(`${e.word}. ${e.num}.`,.85),250); }
+    else if(e.type==='turn'){ sfx('notify'); }
+    else if(e.type==='timeout'){ sfx('timer'); toast('⏰ 시간이 다 되어 차례가 넘어가요!'); }
     else if(e.type==='pass'){ toast(`✋ ${teamName(e.team)}이 턴을 끝냈어요.`); }
     else if(e.type==='reveal'){ const c=g.cards[e.idx]; if(c) popQ.push({e,c}); }
   });
@@ -874,7 +925,7 @@ function nextPop(){
   const {e,c}=popQ.shift();
   const resText={hit:`정답! ${teamName(e.team)} 카드`, enemy:`상대 팀 카드! 차례가 넘어가요`, neutral:`마을 사람 카드! 차례가 넘어가요`, assassin:`도깨비 카드! ${teamName(e.team)} 패배`}[e.result];
   const resImg = EMB[e.color] || EMB.neutral;
-  beep(e.result==='hit'?'hit':e.result==='assassin'?'boom':'bad');
+  sfx(e.color==='assassin'?'goblin':e.color==='blue'?'blue':e.color==='red'?'red':'neutral');
   const L=$('#revealLayer');
   L.innerHTML=`<div class="gpanel pop reveal-pop ${e.team}">
     <img class="ph" src="${cardImg(c)}" alt="">
@@ -960,13 +1011,14 @@ function showEnd(g, force){
     endShownFor=g.no; L.classList.remove('hidden');
     if(first){
       const win = g.winner && g.me.team===g.winner;
-      if(g.reason==='assassin') beep('boom');
-      if(win){ setTimeout(()=>beep('win'),300); confetti(g.winner); }
+      playBgm('result');
+      if(win){ setTimeout(()=>sfx('victory'),400); confetti(g.winner); }
+      else if(g.me.team && g.winner){ setTimeout(()=>sfx('defeat'),400); }
     }
   }
   tickTimer();
 }
-function hideEnd(){ $('#endLayer').classList.add('hidden'); }
+function hideEnd(){ const was=!$('#endLayer').classList.contains('hidden'); $('#endLayer').classList.add('hidden'); if(was && $('#game').classList.contains('on')) playBgm('game'); }
 function confetti(t){
   const cols = t==='blue'?['#3aa0ff','#7cc8ff','#ffcf3f','#fff']:['#ff4d5a','#ff9aa2','#ffcf3f','#fff'];
   for(let i=0;i<70;i++){ const d=document.createElement('div'); d.className='confetti'; d.style.left=Math.random()*1672+'px'; d.style.background=cols[i%cols.length]; d.style.animationDuration=(2+Math.random()*2)+'s'; d.style.animationDelay=Math.random()*.6+'s'; $('#stage').appendChild(d); setTimeout(()=>d.remove(),5000); }
@@ -977,9 +1029,10 @@ function tickTimer(){
   const r=$('#gBoxR');
   if(r){
     if(S&&S.game&&S.game.phase==='over'){ r.innerHTML=`<div class="l">작전 종료</div><div class="v small">🏁</div>`; }
-    else if(endAt){ const s=Math.max(0,Math.ceil((endAt-Date.now())/1000)); r.innerHTML=`<div class="l">남은 시간</div><div class="v ${s<=10?'warn':''}">${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}</div>`; }
+    else if(endAt){ const s=Math.max(0,Math.ceil((endAt-Date.now())/1000)); const tk=endAt+'|'+s; if(s===10 && tickTimer.warn!==endAt){ tickTimer.warn=endAt; sfx('timer'); } r.innerHTML=`<div class="l">남은 시간</div><div class="v ${s<=10?'warn':''}">${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}</div>`; }
     else r.innerHTML=`<div class="l">남은 시간</div><div class="v">∞</div>`;
   }
+  if(nextAt){ const left=Math.ceil((nextAt-Date.now())/1000); if(left===3 && tickTimer.cd!==nextAt){ tickTimer.cd=nextAt; sfx('countdown'); } }
   const txt = nextAt ? `⏳ ${Math.max(0,Math.ceil((nextAt-Date.now())/1000))}초 뒤 새 게임 (역할 바뀜)` : '선생님이 다음 판을 시작해요';
   const nc=$('#nextCount'), nc2=$('#nextCount2');
   if(nc) nc.textContent=txt; if(nc2) nc2.textContent=txt;
@@ -994,7 +1047,7 @@ function renderFinal(){
   $('#podium').innerHTML=p.map((r,i)=>r?`<div class="pod ${cls[i]}">${cls[i]==='p1'?'<div class="crown">👑</div>':''}<div class="nm">${esc(r.name)}</div><div class="sc">${r.score}점</div><div class="bar">${r.rank}</div></div>`:'').join('');
   $('#finalList').innerHTML=rk.map(r=>`<div class="rrow ${r.id===S.me.id?'me':''}"><span class="rk">${r.rank}</span><span class="nm">${esc(r.name)}</span><span class="sub">${r.wins}승 · 정답 ${r.correct}</span><span class="sc">${r.score}</span></div>`).join('')
     + `<div style="text-align:center;font-size:22px;margin-top:16px;color:#fff">${esc(S.me.name)} 요원은 <b style="color:var(--gold)">${S.me.rank}위</b>! 수고했어요 👏</div>`;
-  if(!renderFinal.done){ renderFinal.done=true; beep('win'); }
+  if(!renderFinal.done){ renderFinal.done=true; sfx('victory'); }
 }
 
 // =============================================================
