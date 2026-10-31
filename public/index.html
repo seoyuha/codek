@@ -476,6 +476,8 @@ const COLS = [336,540,744,948,1150], ROWS = [213,354,496,640], CW = 189, CH = [1
 const ROWY = [341,417,492,568];
 
 fetch('/api/assets').then(r=>r.json()).then(a=>{ CARD_IMG = a.cards || {}; }).catch(()=>{});
+// 화면 그림 미리 받아 두기 (승리·패배 화면이 바로 보이도록)
+window.addEventListener('load', ()=>{ ['bg_join','bg_wait','bg_game','win_blue','win_red','lose_blue','lose_red','bg_final','emblem_blue','emblem_red','emblem_goblin'].forEach((n,i)=>setTimeout(()=>{ const im=new Image(); im.src=T_+n+(n.startsWith('emblem')?'.png':'.jpg'); }, 300*i)); });
 const cardImg = c => c.img || CARD_IMG[c.id] || ('assets/cards/'+c.id+'.jpg');
 const avatar = (team, idx) => `${T_}avatars/${team}${(idx % AVA_N[team]) + 1}.jpg`;
 const teamName = t => t==='red' ? '빨간 팀' : '파란 팀';
