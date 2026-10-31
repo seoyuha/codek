@@ -1,0 +1,16 @@
+{
+  "name": "codek-k-culture",
+  "version": "1.0.0",
+  "description": "CODE K: 전통문화 비밀요원 - 6학년 영어 11단원 코드네임 방식 온라인 게임",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}

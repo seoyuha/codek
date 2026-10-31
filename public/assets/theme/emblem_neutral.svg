@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="60%"><stop offset="0" stop-color="#4a4f5c"/><stop offset="1" stop-color="#1b1e26"/></radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6dc9a"/><stop offset="1" stop-color="#b98a3c"/></linearGradient>
+  </defs>
+  <circle cx="128" cy="128" r="122" fill="url(#bg)" stroke="#9aa3b5" stroke-width="6"/>
+  <circle cx="128" cy="128" r="104" fill="none" stroke="#6b7385" stroke-width="2"/>
+  <!-- 한옥 지붕 -->
+  <path d="M46 118 Q88 124 128 82 Q168 124 210 118 L196 134 L60 134 Z" fill="url(#gold)"/>
+  <rect x="72" y="134" width="112" height="50" fill="none" stroke="url(#gold)" stroke-width="6"/>
+  <path d="M100 134 V184 M128 134 V184 M156 134 V184" stroke="url(#gold)" stroke-width="5"/>
+  <rect x="62" y="184" width="132" height="10" rx="3" fill="url(#gold)"/>
+</svg>
